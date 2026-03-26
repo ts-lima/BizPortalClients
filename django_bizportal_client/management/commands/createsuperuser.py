@@ -10,7 +10,7 @@ from django.core.management.base import CommandError
 from django.db import IntegrityError, transaction
 from django.utils.text import capfirst
 
-from django_bizportal_client.settings import get_oidc_identity_model
+from django_bizportal_client.settings import get_oidc_identity_model, get_setting
 
 
 class Command(DjangoCreateSuperuserCommand):
@@ -32,6 +32,15 @@ class Command(DjangoCreateSuperuserCommand):
             '--subject',
             help='Specifies the subject for the superuser OIDC identity.',
         )
+
+    def _get_default_issuer(self):
+        issuer_url = get_setting('OIDC_ISSUER_URL', '')
+        if not issuer_url:
+            raise CommandError('OIDC issuer URL is not configured. Please set OIDC_ISSUER_URL in your settings or provide it interactively.')
+        return f'{issuer_url}o'
+
+    def _get_default_subject(self):
+        return '1'
 
     def handle(self, *args, **options):
         username = options[self.UserModel.USERNAME_FIELD]
@@ -210,7 +219,16 @@ class Command(DjangoCreateSuperuserCommand):
         field = self.OIDCIdentity._meta.get_field(field_name)
         value = None
         while value is None:
-            raw_value = input(self._get_oidc_input_message(field))
+            if field_name == 'issuer':
+                default_value = self._get_default_issuer()
+            elif field_name == 'subject':
+                default_value = self._get_default_subject()
+            else:
+                default_value = None
+
+            raw_value = input(self._get_oidc_input_message(field, default_value))
+            if raw_value == '' and default_value is not None:
+                raw_value = default_value
             value = self._clean_oidc_value(field_name, raw_value)
         return value
 
@@ -218,7 +236,12 @@ class Command(DjangoCreateSuperuserCommand):
         env_var = f'DJANGO_SUPERUSER_{field_name.upper()}'
         value = options[field_name] or os.environ.get(env_var)
         if value is None:
-            raise CommandError(f'You must use --{field_name} with --noinput.')
+            if field_name == 'issuer':
+                value = self._get_default_issuer()
+            elif field_name == 'subject':
+                value = self._get_default_subject()
+            else:
+                raise CommandError(f'You must use --{field_name} with --noinput.')
         cleaned_value = self._clean_oidc_value(field_name, value)
         if cleaned_value is None:
             raise CommandError(f'{capfirst(field_name)} cannot be blank.')
@@ -238,7 +261,9 @@ class Command(DjangoCreateSuperuserCommand):
             self.stderr.write('Error: %s' % '; '.join(exc.messages))
             return None
 
-    def _get_oidc_input_message(self, field):
+    def _get_oidc_input_message(self, field, default_value=None):
+        if default_value is not None:
+            return f'OIDC {capfirst(field.verbose_name)} [{default_value}]: '
         return f'OIDC {capfirst(field.verbose_name)}: '
 
     def _validate_oidc_identity_uniqueness(self, *, issuer, subject, database):
