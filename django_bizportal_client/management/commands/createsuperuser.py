@@ -26,11 +26,11 @@ class Command(DjangoCreateSuperuserCommand):
         super().add_arguments(parser)
         parser.add_argument(
             '--issuer',
-            help='Specifies the issuer for the superuser OIDC identity.',
+            help='Specifies the issuer for the superuser OIDC identity. Default is OIDC_ISSUER_URL + "o".',
         )
         parser.add_argument(
             '--subject',
-            help='Specifies the subject for the superuser OIDC identity.',
+            help='Specifies the subject for the superuser OIDC identity. Default is "1".',
         )
 
     def _get_default_issuer(self):
