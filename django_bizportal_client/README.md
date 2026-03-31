@@ -30,6 +30,8 @@ TEMPLATES = [
     },
 ]
 
+LOGIN_URL = '/login/'
+
 AUTHENTICATION_BACKENDS = [
     'django_bizportal_client.backends.BizPortalOIDCBackend',
     'django.contrib.auth.backends.ModelBackend',
@@ -87,6 +89,57 @@ python manage.py migrate django_bizportal_client
 - `get_username_availability`: BizPortal 上でのユーザー名の利用可能性を確認
 - `provision_user`: BizPortal 上でユーザーを作成
 - `create_oidc_identity`: OIDCIdentity レコードを作成
+
+### クライアントコードの例です。
+
+```python
+from django_bizportal_client.client import BizPortalClient, BizPortalApiError
+from django.contrib.auth import get_user_model
+from django.db import transaction
+
+def my_view(request):
+    new_username = request.POST.get('username')
+    new_email = request.POST.get('email')
+    new_password = request.POST.get('password')
+    new_name = request.POST.get('name')
+    new_surname = request.POST.get('surname')
+
+    # BizPortal クライアントの初期化
+    try:
+        client = BizPortalClient(request)
+    except BizPortalApiError as e:
+        raise Exception(f"BizPortal クライアントの初期化に失敗: {str(e)}")
+    except Exception as e:
+        raise Exception(f"BizPortal クライアントの初期化中に予期しないエラー: {str(e)}")
+
+    # ユーザー名の利用可能性を確認
+    try:
+        response = client.get_username_availability(new_username)
+    except BizPortalApiError as e:
+        raise Exception(f"ユーザー名の利用可能性の確認に失敗: {str(e)}")
+    except Exception as e:
+        raise Exception(f"ユーザー名の利用可能性の確認中に予期しないエラー: {str(e)}")
+
+    if not response.get('available'):
+        raise Exception(f"ユーザー名は既に使用されています: {response.get('detail')}")
+
+    # ユーザーを作成
+	try:
+        client.provision_user(new_username, new_email, new_password, name=new_name, surname=new_surname)
+
+        User = get_user_model()
+        with transaction.atomic():
+            user = User._default_manager.create_user(username=new_username, email=new_email, password=new_password)
+            client.create_oidc_identity(user)
+
+    except BizPortalApiError as e:
+        raise Exception(f"ユーザーの作成に失敗: {str(e)}")
+    except Exception as e:
+        raise Exception(f"ユーザーの作成中に予期しないエラー: {str(e)}")
+
+    # ユーザーが正常に作成されたことを示すレスポンスを返す
+    return HttpResponse("ユーザーが正常に作成されました")
+```
 
 ## クライアント向けの ブランディング
 
