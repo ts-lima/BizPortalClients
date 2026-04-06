@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "django-bizportal-client"
-version = "0.3.0"
+dynamic = ["version"]  # __init__.pyで管理する
 authors = [
   { name="リマ アンデルソン", email="a_lima@ts-taisei.co.jp" },
 ]
@@ -28,3 +28,6 @@ packages = [
 
 [tool.setuptools.package-dir]
 django_bizportal_client = "."
+
+[tool.setuptools.dynamic]
+version = {attr = "django_bizportal_client.__version__"}

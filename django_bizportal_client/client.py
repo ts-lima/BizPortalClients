@@ -175,3 +175,50 @@ class BizPortalClient:
 			subject=subject,
 			company_slug=company_slug,
 		)
+
+	def update_user(self, *, username, email=None, name=None, surname=None):
+		data = {
+			'username': username,
+		}
+		if email is not None:
+			data['email'] = email
+		if name is not None:
+			data['name'] = name
+		if surname is not None:
+			data['surname'] = surname
+
+		try:
+			response = requests.post(
+				f'{self.base_url}/api/v1/users/update/',
+				json=data,
+				headers={
+					**self._build_headers(),
+					'Content-Type': 'application/json',
+				},
+				timeout=get_setting('OIDC_TIMEOUT_SECONDS'),
+			)
+		except requests.Timeout as exc:
+			raise BizPortalApiError('BizPortal APIへの接続がタイムアウトしました。', status_code=504) from exc
+		except requests.RequestException as exc:
+			raise BizPortalApiError('BizPortal APIへの接続に失敗しました。', status_code=502) from exc
+		return self._handle_response(response)
+
+	def password_reset(self, *, username, email):
+		try:
+			response = requests.post(
+				f'{self.base_url}/api/v1/users/password-reset/',
+				json={
+					'username': username,
+					'email': email,
+				},
+				headers={
+					**self._build_headers(),
+					'Content-Type': 'application/json',
+				},
+				timeout=get_setting('OIDC_TIMEOUT_SECONDS'),
+			)
+		except requests.Timeout as exc:
+			raise BizPortalApiError('BizPortal APIへの接続がタイムアウトしました。', status_code=504) from exc
+		except requests.RequestException as exc:
+			raise BizPortalApiError('BizPortal APIへの接続に失敗しました。', status_code=502) from exc
+		return self._handle_response(response)
