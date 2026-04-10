@@ -18,6 +18,14 @@ INSTALLED_APPS = [
     'django_bizportal_client',
 ]
 
+MIDDLEWARE = [
+    # ...
+    'django.contrib.auth.middleware.AuthenticationMiddleware',  # Django のデフォルト認証ミドルウェア
+    'django_bizportal_client.middleware.OIDCSessionCleanupMiddleware',
+    'django_bizportal_client.middleware.OIDCSessionRefreshMiddleware',
+    # ...
+]
+
 TEMPLATES = [
     {
         # ...
@@ -25,6 +33,7 @@ TEMPLATES = [
             'context_processors': [
                 # ...
                 'django_bizportal_client.context_processors.oidc_portal_branding',
+                'django_bizportal_client.context_processors.oidc_session_refresh',
             ],
         },
     },
@@ -41,13 +50,13 @@ OIDC_CLIENT_ID = 'your-bizportal-client-id'
 OIDC_CLIENT_SECRET = 'your-bizportal-client-secret'
 OIDC_CLIENT_CALLBACK_URL = 'https://your-app.example.com/oidc/callback/'
 OIDC_ISSUER_URL = 'https://bizportal.example.com/'
-OIDC_LOGOUT_URL = 'https://bizportal.example.com/o/logout/'
 OIDC_STATE_SALT = 'oidc-state-v1'
 
 # 任意設定
 OIDC_SCOPE = 'openid email'
 OIDC_STATE_MAX_AGE_SECONDS = 300
 OIDC_TIMEOUT_SECONDS = 10
+OIDC_AUTO_LINK_BY_EMAIL = False
 OIDC_AUTO_CREATE_USER = False
 OIDC_IDENTITY_MODEL = 'django_bizportal_client.OIDCIdentity'
 ```
@@ -63,6 +72,19 @@ urlpatterns = [
     path('', include('django_bizportal_client.urls')),
     # ...
 ]
+```
+
+---
+
+`base.html` などのベーステンプレートに以下を追加します。
+
+```html
+<body>
+    {# 既存のコンテンツ #}
+
+    {# セッション延長用の iframe を追加   #}
+    {{ oidc_session_refresh_iframe|safe }}
+</body>
 ```
 
 ---
@@ -92,7 +114,7 @@ python manage.py migrate django_bizportal_client
 - `update_user`: BizPortal 上のユーザー情報を更新 (メールアドレス、名前、苗字)
 - `password_reset`: BizPortal 上のユーザーパスワードの再設定メールを送信
 
-### クライアントコードの例です。
+### クライアントコードの例
 
 ```python
 from django_bizportal_client.client import BizPortalClient, BizPortalApiError
@@ -181,3 +203,10 @@ def password_reset_view(request):
 - `oidc_company_slug`: BizPortal 上の会社識別子
 - `oidc_company_name`: BizPortal 上の会社名
 - `oidc_installation_name`: BizPortal 上のアプリインストール名
+
+## クライアント向けの セッション延長機能
+
+クライアントアプリのユーザーのセッション、および BizPortal 上のセッションを自動的に延長する機能を提供します。
+- `django_bizportal_client.middleware.OIDCSessionCleanupMiddleware`: クライアントアプリの OAuth2 トークンの有効期限が切れている場合に、セッションからトークン情報を削除します。
+- `django_bizportal_client.middleware.OIDCSessionRefreshMiddleware`: クライアントアプリのユーザーのセッションが一定期間（24時間以上）経過している場合に、セッションを自動的に更新します。
+- `django_bizportal_client.context_processors.oidc_session_refresh`: BizPortal のセッションも更新するための iframe をテンプレートに提供します。

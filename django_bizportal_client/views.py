@@ -111,6 +111,11 @@ def oidc_callback(request):
             return HttpResponseBadRequest('id_token is required')
 
         claims = validate_id_token(id_token, config, expected_nonce)
+        sub = claims.get('sub')
+        if not sub:
+            return HttpResponseBadRequest('sub claim is required')
+
+        issuer = claims.get('iss') or config['issuer']
         access_token = token.get('access_token')
         if not access_token:
             return HttpResponseBadRequest('access_token is required')
@@ -120,19 +125,24 @@ def oidc_callback(request):
         request.session['oidc_refresh_token'] = token.get('refresh_token', '')
         request.session['oidc_access_token_expires_at'] = expires_at
 
-        userinfo = client.get(
-            config['userinfo_endpoint'],
-            timeout=get_setting('OIDC_TIMEOUT_SECONDS'),
-        ).json()
     except (OAuthError, requests.RequestException, ValueError, KeyError, TypeError) as exc:
         logger.warning('OIDC token exchange failed: %s', exc)
         return HttpResponseBadRequest('oidc token exchange failed')
 
-    sub = userinfo.get('sub')
-    if not sub:
-        return HttpResponseBadRequest('sub claim is required')
+    userinfo = {}
+    try:
+        userinfo = client.get(
+            config['userinfo_endpoint'],
+            timeout=get_setting('OIDC_TIMEOUT_SECONDS'),
+        ).json()
+    except (requests.RequestException, ValueError, TypeError) as exc:
+        logger.warning('Failed to fetch optional userinfo: %s', exc)
+        userinfo = {}
 
-    issuer = claims.get('iss') or config['issuer']
+    userinfo_sub = userinfo.get("sub")
+    if userinfo_sub and userinfo_sub != sub:
+        return HttpResponseBadRequest("userinfo sub mismatch")
+
     user = authenticate(
         request,
         oidc_claims=claims,
@@ -160,5 +170,5 @@ def oidc_logout(request):
     request.session.pop('oidc_company_name', None)
     request.session.pop('oidc_installation_name', None)
     logout(request)
-    logout_url = f"{get_required_setting('OIDC_LOGOUT_URL')}?{urlencode({'client_id': get_required_setting('OIDC_CLIENT_ID'), 'state': secrets.token_urlsafe(8)})}"
+    logout_url = f"{get_required_setting('OIDC_ISSUER_URL')}o/logout/?{urlencode({'client_id': get_required_setting('OIDC_CLIENT_ID'), 'state': secrets.token_urlsafe(8)})}"
     return redirect(logout_url)
