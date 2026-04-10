@@ -5,11 +5,11 @@ from django.core.exceptions import ImproperlyConfigured
 
 DEFAULTS = {
     'OIDC_SCOPE': 'openid email',
-    'OIDC_STATE_SALT': 'oidc-state-v1',
     'OIDC_STATE_MAX_AGE_SECONDS': 300,
     'OIDC_TIMEOUT_SECONDS': 10,
     'OIDC_IDENTITY_MODEL': 'django_bizportal_client.OIDCIdentity',
     'OIDC_AUTH_BACKEND': 'django_bizportal_client.backends.BizPortalOIDCBackend',
+    'OIDC_AUTO_LINK_BY_EMAIL': False,
     'OIDC_AUTO_CREATE_USER': False,
 }
 
