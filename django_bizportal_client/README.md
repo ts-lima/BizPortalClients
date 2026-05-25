@@ -5,7 +5,7 @@ BizPortal を OIDC IdP として使う Django 5+ 向け最小クライアント�
 ## インストール
 
 ```bash
-pip install git+https://github.com/ts-taisei/BizPortalClients.git@dja-0.3.0#subdirectory=django_bizportal_client
+pip install git+https://github.com/ts-taisei/BizPortalClients.git@dja-0.7.0#subdirectory=django_bizportal_client
 ```
 
 ## 基準設定
@@ -111,7 +111,7 @@ python manage.py migrate django_bizportal_client
 - `get_username_availability`: BizPortal 上でのユーザー名の利用可能性を確認
 - `provision_user`: BizPortal 上でユーザーを作成
 - `create_oidc_identity`: クライアント側で OIDCIdentity レコードを作成
-- `update_user`: BizPortal 上のユーザー情報を更新 (メールアドレス、名前、苗字)
+- `update_user`: BizPortal 上のユーザー情報を更新 (メールアドレス、名前、苗字、役割)
 - `password_reset`: BizPortal 上のユーザーパスワードの再設定メールを送信
 
 ### クライアントコードの例
@@ -128,6 +128,7 @@ def create_view(request):
     new_password = request.POST.get('password')
     new_name = request.POST.get('name')
     new_surname = request.POST.get('surname')
+    new_role = request.POST.get('role')
 
     # BizPortal クライアントの初期化
     try:
@@ -150,7 +151,7 @@ def create_view(request):
 
     # ユーザーを作成
 	try:
-        client.provision_user(new_username, new_email, new_password, name=new_name, surname=new_surname)
+        client.provision_user(new_username, new_email, new_password, name=new_name, surname=new_surname, role=new_role)
 
         User = get_user_model()
         with transaction.atomic():
@@ -170,10 +171,11 @@ def update_view(request):
     new_email = request.POST.get('email')
     new_name = request.POST.get('name')
     new_surname = request.POST.get('surname')
+    new_role = request.POST.get('role')
 
     try:
         client = BizPortalClient(request)
-        client.update_user(username=username, email=new_email, name=new_name, surname=new_surname)
+        client.update_user(username=username, email=new_email, name=new_name, surname=new_surname, role=new_role)
     except BizPortalApiError as e:
         raise Exception(f"ユーザー情報の更新に失敗: {str(e)}")
     except Exception as e:
