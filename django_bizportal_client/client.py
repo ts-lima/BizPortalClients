@@ -7,6 +7,7 @@ from authlib.jose import jwt
 
 from django.core.exceptions import ImproperlyConfigured
 from django.utils import timezone
+from enum import StrEnum
 
 from .settings import get_setting, get_required_setting, get_oidc_identity_model
 
@@ -90,6 +91,11 @@ class BizPortalApiError(Exception):
 
 
 class BizPortalClient:
+	class CompanyUserRole(StrEnum):
+		OWNER = 'owner'
+		ADMIN = 'admin'
+		MEMBER = 'member'
+
 	def __init__(self, request):
 		self.request = request
 		self.base_url = get_required_setting('OIDC_ISSUER_URL').rstrip('/')
@@ -186,7 +192,7 @@ class BizPortalClient:
 		self.result = payload
 		return payload
 
-	def get_username_availability(self, username):
+	def get_username_availability(self, username: str):
 		try:
 			response = requests.get(
 				f'{self.base_url}/api/v1/users/username-availability/',
@@ -200,7 +206,7 @@ class BizPortalClient:
 			raise BizPortalApiError('BizPortal APIへの接続に失敗しました。', status_code=502) from exc
 		return self._handle_response(response)
 
-	def provision_user(self, *, username, email, password, name='', surname=''):
+	def provision_user(self, *, username: str, email: str, password: str, name: str = '', surname: str = '', role: CompanyUserRole = CompanyUserRole.MEMBER):
 		try:
 			response = requests.post(
 				f'{self.base_url}/api/v1/users/provision/',
@@ -210,6 +216,7 @@ class BizPortalClient:
 					'password': password,
 					'name': name,
 					'surname': surname,
+					'role': role,
 				},
 				headers={
 					**self._build_headers(),
@@ -239,7 +246,7 @@ class BizPortalClient:
 			company_slug=company_slug,
 		)
 
-	def update_user(self, *, username, email=None, name=None, surname=None):
+	def update_user(self, *, username: str, email: str = None, name: str = None, surname: str = None, role: CompanyUserRole = None):
 		data = {
 			'username': username,
 		}
@@ -249,7 +256,8 @@ class BizPortalClient:
 			data['name'] = name
 		if surname is not None:
 			data['surname'] = surname
-
+		if role is not None:
+			data['role'] = role
 		try:
 			response = requests.post(
 				f'{self.base_url}/api/v1/users/update/',
@@ -266,7 +274,7 @@ class BizPortalClient:
 			raise BizPortalApiError('BizPortal APIへの接続に失敗しました。', status_code=502) from exc
 		return self._handle_response(response)
 
-	def password_reset(self, *, username, email):
+	def password_reset(self, *, username: str, email: str):
 		try:
 			response = requests.post(
 				f'{self.base_url}/api/v1/users/password-reset/',
