@@ -5,7 +5,7 @@ BizPortal を OIDC IdP として使う Django 5+ 向け最小クライアント�
 ## インストール
 
 ```bash
-pip install git+https://github.com/ts-taisei/BizPortalClients.git@dja-0.7.0#subdirectory=django_bizportal_client
+pip install git+https://github.com/ts-taisei/BizPortalClients.git@dja-0.8.0#subdirectory=django_bizportal_client
 ```
 
 ## 基準設定
@@ -112,6 +112,7 @@ python manage.py migrate django_bizportal_client
 - `provision_user`: BizPortal 上でユーザーを作成
 - `create_oidc_identity`: クライアント側で OIDCIdentity レコードを作成
 - `update_user`: BizPortal 上のユーザー情報を更新 (メールアドレス、名前、苗字、役割)
+- `delete_user`: BizPortal 上のユーザーを削除 (ユーザー名と OIDC subject を指定)
 - `password_reset`: BizPortal 上のユーザーパスワードの再設定メールを送信
 
 ### クライアントコードの例
@@ -150,8 +151,15 @@ def create_view(request):
         raise Exception(f"ユーザー名は既に使用されています: {response.get('detail')}")
 
     # ユーザーを作成
-	try:
-        client.provision_user(new_username, new_email, new_password, name=new_name, surname=new_surname, role=new_role)
+    try:
+        client.provision_user(
+            username=new_username,
+            email=new_email,
+            password=new_password,
+            name=new_name,
+            surname=new_surname,
+            role=new_role,
+        )
 
         User = get_user_model()
         with transaction.atomic():
@@ -182,6 +190,20 @@ def update_view(request):
         raise Exception(f"ユーザー情報の更新中に予期しないエラー: {str(e)}")
 
     return HttpResponse("ユーザー情報が正常に更新されました")
+
+def delete_view(request):
+    username = request.POST.get('username')
+    subject = request.POST.get('subject')
+
+    try:
+        client = BizPortalClient(request)
+        client.delete_user(username=username, subject=subject)
+    except BizPortalApiError as e:
+        raise Exception(f"ユーザーの削除に失敗: {str(e)}")
+    except Exception as e:
+        raise Exception(f"ユーザーの削除中に予期しないエラー: {str(e)}")
+
+    return HttpResponse("ユーザーが正常に削除されました")
 
 def password_reset_view(request):
     username = request.user.username
