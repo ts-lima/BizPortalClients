@@ -1,3 +1,4 @@
+import json
 import logging
 import secrets
 import requests
@@ -5,13 +6,17 @@ import requests
 from urllib.parse import urlencode
 from authlib.integrations.base_client.errors import OAuthError
 from django.contrib.auth import authenticate, login, logout
-from django.http import HttpResponseBadRequest
+from django.contrib.auth.hashers import check_password
+from django.contrib.sessions.models import Session
+from django.http import HttpResponseBadRequest, JsonResponse
 from django.shortcuts import redirect
 from django.utils import timezone
+from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 from django.core.signing import BadSignature, SignatureExpired
 
 from .client import oidc_config, build_authorize_redirect, validate_id_token, build_oauth_session
+from .models import OIDCIdentity
 from .settings import get_required_setting, get_setting
 
 
@@ -124,6 +129,7 @@ def oidc_callback(request):
         request.session['oidc_access_token'] = access_token
         request.session['oidc_refresh_token'] = token.get('refresh_token', '')
         request.session['oidc_access_token_expires_at'] = expires_at
+        request.session['oidc_sid'] = claims.get('sid', '')
 
     except (OAuthError, requests.RequestException, ValueError, KeyError, TypeError) as exc:
         logger.warning('OIDC token exchange failed: %s', exc)
@@ -159,6 +165,41 @@ def oidc_callback(request):
     backend_path = get_setting('OIDC_AUTH_BACKEND', 'django.contrib.auth.backends.ModelBackend')
     login(request, user, backend=backend_path)
     return redirect(safe_next_path(parsed_state.get('next') or '/'))
+
+
+@csrf_exempt
+@require_POST
+def backchannel_logout(request):
+    client_secret = get_required_setting('OIDC_CLIENT_SECRET')
+    auth_header = request.META.get('HTTP_AUTHORIZATION', '')
+    if not auth_header.startswith('Bearer ') or not check_password(client_secret, auth_header[7:]):
+        return JsonResponse({'error': 'unauthorized'}, status=401)
+
+    try:
+        data = json.loads(request.body)
+        sub = data.get('sub', '').strip()
+        sid = data.get('sid', '').strip()
+    except (json.JSONDecodeError, AttributeError):
+        return JsonResponse({'error': 'invalid request'}, status=400)
+
+    if not sub:
+        return JsonResponse({'error': 'sub is required'}, status=400)
+
+    try:
+        identity = OIDCIdentity.objects.select_related('user').get(subject=sub)
+    except OIDCIdentity.DoesNotExist:
+        return JsonResponse({'status': 'ok'})
+
+    user_id = str(identity.user.pk)
+    for session in Session.objects.filter(expire_date__gte=timezone.now()):
+        decoded = session.get_decoded()
+        if decoded.get('_auth_user_id') != user_id:
+            continue
+        if sid and decoded.get('oidc_sid') != sid:
+            continue
+        session.delete()
+
+    return JsonResponse({'status': 'ok'})
 
 
 @require_POST

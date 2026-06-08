@@ -5,7 +5,7 @@ BizPortal を OIDC IdP として使う Django 5+ 向け最小クライアント�
 ## インストール
 
 ```bash
-pip install git+https://github.com/ts-taisei/BizPortalClients.git@dja-0.8.0#subdirectory=django_bizportal_client
+pip install git+https://github.com/ts-taisei/BizPortalClients.git@dja-0.9.0#subdirectory=django_bizportal_client
 ```
 
 ## 基準設定
