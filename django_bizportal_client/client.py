@@ -3,7 +3,9 @@ import requests
 
 from authlib.integrations.base_client.errors import OAuthError
 from authlib.integrations.requests_client import OAuth2Session
-from authlib.jose import jwt
+from joserfc import jwt
+from joserfc.jwk import KeySet
+from joserfc.jwt import JWTClaimsRegistry
 
 from django.core.exceptions import ImproperlyConfigured
 from django.utils import timezone
@@ -62,8 +64,9 @@ def validate_id_token(id_token, config, expected_nonce=None):
     except (requests.RequestException, ValueError) as exc:
         raise ValueError('failed to fetch JWKS') from exc
 
-    claims = jwt.decode(id_token, key_set)
-    claims.validate()
+    token = jwt.decode(id_token, KeySet.import_key_set(key_set))
+    claims = token.claims
+    JWTClaimsRegistry().validate(claims)
 
     if claims.get('iss') != config['issuer']:
         raise ValueError('invalid issuer')
