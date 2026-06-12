@@ -316,3 +316,24 @@ class BizPortalClient:
 		except requests.RequestException as exc:
 			raise BizPortalApiError('BizPortal APIへの接続に失敗しました。', status_code=502) from exc
 		return self._handle_response(response)
+
+	def password_update(self, *, username: str, subject: str, password: str):
+		try:
+			response = requests.post(
+				f'{self.base_url}/api/v1/users/password-update/',
+				json={
+					'username': username,
+					'sub': subject,
+					'password': password,
+				},
+				headers={
+					**self._build_headers(),
+					'Content-Type': 'application/json',
+				},
+				timeout=get_setting('OIDC_TIMEOUT_SECONDS'),
+			)
+		except requests.Timeout as exc:
+			raise BizPortalApiError('BizPortal APIへの接続がタイムアウトしました。', status_code=504) from exc
+		except requests.RequestException as exc:
+			raise BizPortalApiError('BizPortal APIへの接続に失敗しました。', status_code=502) from exc
+		return self._handle_response(response)
