@@ -5,7 +5,7 @@ BizPortal を OIDC IdP として使う Django 5+ 向け最小クライアント�
 ## インストール
 
 ```bash
-pip install git+https://github.com/ts-taisei/BizPortalClients.git@dja-1.0.0#subdirectory=django_bizportal_client
+pip install git+https://github.com/ts-taisei/BizPortalClients.git@dja-1.1.0#subdirectory=django_bizportal_client
 ```
 
 ## 基準設定
@@ -114,6 +114,7 @@ python manage.py migrate django_bizportal_client
 - `update_user`: BizPortal 上のユーザー情報を更新 (メールアドレス、名前、苗字、役割)
 - `delete_user`: BizPortal 上のユーザーを削除 (ユーザー名と OIDC subject を指定)
 - `password_reset`: BizPortal 上のユーザーパスワードの再設定メールを送信
+- `password_update`: BizPortal 上のユーザーパスワードを更新 (ユーザー名、OIDC subject、新しいパスワードを指定)
 
 ### クライアントコードの例
 
@@ -218,6 +219,21 @@ def password_reset_view(request):
         raise Exception(f"ユーザーパスワードの再設定中に予期しないエラー: {str(e)}")
 
     return HttpResponse("ユーザーパスワードの再設定メールが送信されました")
+
+def password_update_view(request):
+    username = request.POST.get('username')
+    subject = request.POST.get('subject')
+    new_password = request.POST.get('password')
+
+    try:
+        client = BizPortalClient(request)
+        client.password_update(username=username, subject=subject, password=new_password)
+    except BizPortalApiError as e:
+        raise Exception(f"ユーザーパスワードの更新に失敗: {str(e)}")
+    except Exception as e:
+        raise Exception(f"ユーザーパスワードの更新中に予期しないエラー: {str(e)}")
+
+    return HttpResponse("ユーザーパスワードが正常に更新されました")
 ```
 
 ## クライアント向けの ブランディング

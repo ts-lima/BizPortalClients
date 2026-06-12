@@ -11,7 +11,7 @@ BizPortalClients は BizPortal を OIDC IdP として利用するクライアン
 
 | ディレクトリ | 状態 | 概要 |
 |---|---|---|
-| `django_bizportal_client/` | 本番対応 | Django 5.2+ 向け OIDC クライアントパッケージ (v1.0.0) |
+| `django_bizportal_client/` | 本番対応 | Django 5.2+ 向け OIDC クライアントパッケージ |
 | `flask_bizportal_client/` | スタブ | Flask 向け（未実装） |
 | `laravel_bizportal_client/` | スタブ | Laravel 向け（未実装） |
 
@@ -28,7 +28,7 @@ BizPortalClients は BizPortal を OIDC IdP として利用するクライアン
 ### バージョン管理
 - バージョンは `django_bizportal_client/__init__.py` の `__version__` で管理する
 - `pyproject.toml` の `dynamic = ["version"]` を通じて setuptools が参照する
-- git タグ命名規則：`dja-<version>` (例: `dja-1.0.0`)
+- git タグ命名規則：`dja-<version>` (例: `dja-1.1.0`)
 
 ### パッケージ主要モジュール
 - `backends.py`: `BizPortalOIDCBackend` 認証バックエンド
