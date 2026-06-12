@@ -109,11 +109,11 @@ python manage.py migrate django_bizportal_client
 `django_bizportal_client.client.BizPortalClient` クラスで以下の機能を提供します。
 
 - `get_username_availability`: BizPortal 上でのユーザー名の利用可能性を確認
-- `provision_user`: BizPortal 上でユーザーを作成
+- `provision_user`: BizPortal 上でユーザーを作成。`password` 省略時はパスワード再設定フローが起動し、`send_reset_email=False` でメール送信を抑制して `password_reset_url` のみ受け取れる
 - `create_oidc_identity`: クライアント側で OIDCIdentity レコードを作成
 - `update_user`: BizPortal 上のユーザー情報を更新 (メールアドレス、名前、苗字、役割)
 - `delete_user`: BizPortal 上のユーザーを削除 (ユーザー名と OIDC subject を指定)
-- `password_reset`: BizPortal 上のユーザーパスワードの再設定メールを送信
+- `password_reset`: BizPortal 上のユーザーのパスワード再設定 URL を生成し、レスポンスの `password_reset_url` で受け取る。`send_reset_email=False` でメール送信を抑制し、クライアント側で URL を管理できる
 - `password_update`: BizPortal 上のユーザーパスワードを更新 (ユーザー名、OIDC subject、新しいパスワードを指定)
 
 ### クライアントコードの例
@@ -212,7 +212,10 @@ def password_reset_view(request):
 
     try:
         client = BizPortalClient(request)
-        client.password_reset(username=username, email=email)
+        # send_reset_email=True（デフォルト）: BizPortal がメール送信し、password_reset_url も返す
+        # send_reset_email=False: メール送信を抑制し、password_reset_url のみ返す（クライアント側で管理）
+        result = client.password_reset(username=username, email=email)
+        password_reset_url = result.get('password_reset_url', '')
     except BizPortalApiError as e:
         raise Exception(f"ユーザーパスワードの再設定に失敗: {str(e)}")
     except Exception as e:

@@ -209,7 +209,7 @@ class BizPortalClient:
 			raise BizPortalApiError('BizPortal APIへの接続に失敗しました。', status_code=502) from exc
 		return self._handle_response(response)
 
-	def provision_user(self, *, username: str, email: str, password: str, name: str = '', surname: str = '', role: CompanyUserRole = CompanyUserRole.MEMBER):
+	def provision_user(self, *, username: str, email: str, password: str, name: str = '', surname: str = '', role: CompanyUserRole = CompanyUserRole.MEMBER, send_reset_email: bool = True):
 		try:
 			response = requests.post(
 				f'{self.base_url}/api/v1/users/provision/',
@@ -220,6 +220,7 @@ class BizPortalClient:
 					'name': name,
 					'surname': surname,
 					'role': role,
+					'send_reset_email': send_reset_email,
 				},
 				headers={
 					**self._build_headers(),
@@ -297,13 +298,14 @@ class BizPortalClient:
 			raise BizPortalApiError('BizPortal APIへの接続に失敗しました。', status_code=502) from exc
 		return self._handle_response(response)
 
-	def password_reset(self, *, username: str, email: str):
+	def password_reset(self, *, username: str, email: str = '', send_reset_email: bool = True):
 		try:
 			response = requests.post(
 				f'{self.base_url}/api/v1/users/password-reset/',
 				json={
 					'username': username,
 					'email': email,
+					'send_reset_email': send_reset_email,
 				},
 				headers={
 					**self._build_headers(),
