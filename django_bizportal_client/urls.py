@@ -1,6 +1,6 @@
 from django.urls import path
 
-from .views import oidc_prepare, oidc_callback, oidc_login, oidc_logout, backchannel_logout
+from .views import oidc_prepare, oidc_callback, oidc_login, oidc_logout, backchannel_logout, backchannel_event
 
 oidc_urls = [
     path('oidc/prepare/', oidc_prepare, name='oidc_prepare'),
@@ -8,6 +8,7 @@ oidc_urls = [
     path('oidc/login/', oidc_login, name='oidc_login'),
     path('oidc/logout/', oidc_logout, name='oidc_logout'),
     path('oidc/backchannel-logout/', backchannel_logout, name='oidc_backchannel_logout'),
+    path('oidc/backchannel-event/', backchannel_event, name='oidc_backchannel_event'),
 ]
 
 admin_urls = [
