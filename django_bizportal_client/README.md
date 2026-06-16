@@ -5,7 +5,7 @@ BizPortal を OIDC IdP として使う Django 5+ 向け最小クライアント�
 ## インストール
 
 ```bash
-pip install git+https://github.com/ts-taisei/BizPortalClients.git@dja-1.1.0#subdirectory=django_bizportal_client
+pip install git+https://github.com/ts-taisei/BizPortalClients.git@dja-1.2.0#subdirectory=django_bizportal_client
 ```
 
 ## 基準設定
@@ -109,11 +109,12 @@ python manage.py migrate django_bizportal_client
 `django_bizportal_client.client.BizPortalClient` クラスで以下の機能を提供します。
 
 - `get_username_availability`: BizPortal 上でのユーザー名の利用可能性を確認
-- `provision_user`: BizPortal 上でユーザーを作成。`password` 省略時はパスワード再設定フローが起動し、`send_reset_email=False` でメール送信を抑制して `password_reset_url` のみ受け取れる
+- `provision_user`: BizPortal 上でユーザーを作成。`password` 省略時はパスワード再設定フローが起動し、`send_reset_email=False` でメール送信を抑制して `password_reset_url` のみ受け取れる。`display_company_name` を指定するとパスワード再設定ページに表示される会社名を上書きできる
 - `create_oidc_identity`: クライアント側で OIDCIdentity レコードを作成
 - `update_user`: BizPortal 上のユーザー情報を更新 (メールアドレス、名前、苗字、役割)
 - `delete_user`: BizPortal 上のユーザーを削除 (ユーザー名と OIDC subject を指定)
-- `password_reset`: BizPortal 上のユーザーのパスワード再設定 URL を生成し、レスポンスの `password_reset_url` で受け取る。`send_reset_email=False` でメール送信を抑制し、クライアント側で URL を管理できる
+- `password_reset`: BizPortal 上のユーザーのパスワード再設定 URL を生成し、レスポンスの `password_reset_url` で受け取る。`send_reset_email=False` でメール送信を抑制し、クライアント側で URL を管理できる。`display_company_name` を指定するとパスワード再設定ページに表示される会社名を上書きできる。
+- `send_email`: BizPortal 上のユーザーの登録メールアドレス宛に任意のメール（件名・本文）を送信する。
 - `password_update`: BizPortal 上のユーザーパスワードを更新 (ユーザー名、OIDC subject、新しいパスワードを指定)
 
 ### クライアントコードの例
@@ -209,19 +210,28 @@ def delete_view(request):
 def password_reset_view(request):
     username = request.user.username
     email = request.user.email
+    # display_company_name を指定するとパスワード再設定ページに表示される会社名を上書きできる
+    # 省略時は BizPortal に登録された Company 名が表示される
+    tenant_name = request.session.get('tenant_display_name', '')
 
     try:
         client = BizPortalClient(request)
         # send_reset_email=True（デフォルト）: BizPortal がメール送信し、password_reset_url も返す
         # send_reset_email=False: メール送信を抑制し、password_reset_url のみ返す（クライアント側で管理）
-        result = client.password_reset(username=username, email=email)
-        password_reset_url = result.get('password_reset_url', '')
+        result = client.password_reset(
+            username=username,
+            email=email,
+            send_reset_email=False,
+            display_company_name=tenant_name,
+        )
+        # 生成されたパスワード再設定 URL をセッションに保存（例: パスワード再設定フローの次のステップで使用）
+        request.session['password_reset_url'] = result.get('password_reset_url', '')
     except BizPortalApiError as e:
         raise Exception(f"ユーザーパスワードの再設定に失敗: {str(e)}")
     except Exception as e:
         raise Exception(f"ユーザーパスワードの再設定中に予期しないエラー: {str(e)}")
 
-    return HttpResponse("ユーザーパスワードの再設定メールが送信されました")
+    return HttpResponse("ユーザーパスワードの再設定URLが生成されました")
 
 def password_update_view(request):
     username = request.POST.get('username')
@@ -237,6 +247,30 @@ def password_update_view(request):
         raise Exception(f"ユーザーパスワードの更新中に予期しないエラー: {str(e)}")
 
     return HttpResponse("ユーザーパスワードが正常に更新されました")
+```
+
+### 匿名コンテキストでの呼び出し（アプリケーション資格情報）
+
+`password_reset` と `send_email` はユーザーがまだログインしていない状態（例: ログイン前の「パスワードを忘れた」フロー）でも呼び出せます。この場合、`settings.py` の `OIDC_CLIENT_ID` と `OIDC_CLIENT_SECRET` を HTTP Basic 認証で送信するため、保存済みのアクセストークンは不要です。
+
+```python
+def forgot_password_view(request):
+    username = request.POST.get('username')
+    email = request.POST.get('email')
+
+    try:
+        client = BizPortalClient(request)
+        result = client.password_reset(
+            username=username,
+            email=email,
+            send_reset_email=True,
+        )
+    except BizPortalApiError as e:
+        raise Exception(f"パスワード再設定メールの送信に失敗: {str(e)}")
+    except Exception as e:
+        raise Exception(f"パスワード再設定メールの送信中に予期しないエラー: {str(e)}")
+
+    return HttpResponse("パスワード再設定メールを送信しました")
 ```
 
 ## クライアント向けの ブランディング

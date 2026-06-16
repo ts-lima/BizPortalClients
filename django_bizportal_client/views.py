@@ -16,8 +16,10 @@ from django.views.decorators.http import require_POST
 from django.core.signing import BadSignature, SignatureExpired
 
 from .client import oidc_config, build_authorize_redirect, validate_id_token, build_oauth_session
+from .events import UserEvent
 from .models import OIDCIdentity
-from .settings import get_required_setting, get_setting
+from .settings import get_required_setting, get_setting, get_oidc_identity_model
+from .signals import user_event_received
 
 
 logger = logging.getLogger(__name__)
@@ -198,6 +200,51 @@ def backchannel_logout(request):
         if sid and decoded.get('oidc_sid') != sid:
             continue
         session.delete()
+
+    return JsonResponse({'status': 'ok'})
+
+
+@csrf_exempt
+@require_POST
+def backchannel_event(request):
+    client_secret = get_required_setting('OIDC_CLIENT_SECRET')
+    auth_header = request.META.get('HTTP_AUTHORIZATION', '')
+    if not auth_header.startswith('Bearer ') or not check_password(client_secret, auth_header[7:]):
+        return JsonResponse({'error': 'unauthorized'}, status=401)
+
+    try:
+        data = json.loads(request.body)
+        event = data.get('event', '').strip()
+        sub = data.get('sub', '').strip()
+        sid = data.get('sid', '').strip()
+        event_id = data.get('event_id', '').strip()
+        issued_at = data.get('issued_at', '').strip()
+        company_slug = data.get('company_slug', '').strip()
+    except (json.JSONDecodeError, AttributeError):
+        return JsonResponse({'error': 'invalid request'}, status=400)
+
+    if not event or not sub or not event_id:
+        return JsonResponse({'error': 'missing required fields'}, status=400)
+
+    OIDCIdentityModel = get_oidc_identity_model()
+    identity = None
+    user = None
+    if OIDCIdentityModel is not None:
+        identity = OIDCIdentityModel.objects.filter(subject=sub).select_related('user').first()
+        if identity is not None:
+            user = identity.user
+
+    user_event_received.send(
+        sender=backchannel_event,
+        event=event,
+        sub=sub,
+        sid=sid,
+        event_id=event_id,
+        issued_at=issued_at,
+        company_slug=company_slug,
+        identity=identity,
+        user=user,
+    )
 
     return JsonResponse({'status': 'ok'})
 
