@@ -1,3 +1,4 @@
+import base64
 import logging
 import requests
 
@@ -168,9 +169,21 @@ class BizPortalClient:
 		access_token = self._refresh_access_token()
 		return access_token
 
-	def _build_headers(self):
+	def _build_user_headers(self):
 		return {
 			'Authorization': f'Bearer {self._get_access_token()}',
+			'Accept': 'application/json',
+		}
+
+	def _get_client_credentials(self):
+		client_id = get_required_setting('OIDC_CLIENT_ID')
+		client_secret = get_required_setting('OIDC_CLIENT_SECRET')
+		credentials = base64.b64encode(f'{client_id}:{client_secret}'.encode('utf-8')).decode('ascii')
+		return credentials
+
+	def _build_application_headers(self):
+		return {
+			'Authorization': f'Basic {self._get_client_credentials()}',
 			'Accept': 'application/json',
 		}
 
@@ -200,7 +213,7 @@ class BizPortalClient:
 			response = requests.get(
 				f'{self.base_url}/api/v1/users/username-availability/',
 				params={'username': username},
-				headers=self._build_headers(),
+				headers=self._build_user_headers(),
 				timeout=get_setting('OIDC_TIMEOUT_SECONDS'),
 			)
 		except requests.Timeout as exc:
@@ -209,7 +222,7 @@ class BizPortalClient:
 			raise BizPortalApiError('BizPortal APIへの接続に失敗しました。', status_code=502) from exc
 		return self._handle_response(response)
 
-	def provision_user(self, *, username: str, email: str, password: str, name: str = '', surname: str = '', role: CompanyUserRole = CompanyUserRole.MEMBER, send_reset_email: bool = True):
+	def provision_user(self, *, username: str, email: str, password: str, name: str = '', surname: str = '', role: CompanyUserRole = CompanyUserRole.MEMBER, send_reset_email: bool = True, display_company_name: str = ''):
 		try:
 			response = requests.post(
 				f'{self.base_url}/api/v1/users/provision/',
@@ -221,9 +234,10 @@ class BizPortalClient:
 					'surname': surname,
 					'role': role,
 					'send_reset_email': send_reset_email,
+					'display_company_name': display_company_name,
 				},
 				headers={
-					**self._build_headers(),
+					**self._build_user_headers(),
 					'Content-Type': 'application/json',
 				},
 				timeout=get_setting('OIDC_TIMEOUT_SECONDS'),
@@ -267,7 +281,7 @@ class BizPortalClient:
 				f'{self.base_url}/api/v1/users/update/',
 				json=data,
 				headers={
-					**self._build_headers(),
+					**self._build_user_headers(),
 					'Content-Type': 'application/json',
 				},
 				timeout=get_setting('OIDC_TIMEOUT_SECONDS'),
@@ -287,7 +301,7 @@ class BizPortalClient:
 					'sub': subject,
 				},
 				headers={
-					**self._build_headers(),
+					**self._build_user_headers(),
 					'Content-Type': 'application/json',
 				},
 				timeout=get_setting('OIDC_TIMEOUT_SECONDS'),
@@ -298,7 +312,7 @@ class BizPortalClient:
 			raise BizPortalApiError('BizPortal APIへの接続に失敗しました。', status_code=502) from exc
 		return self._handle_response(response)
 
-	def password_reset(self, *, username: str, email: str = '', send_reset_email: bool = True):
+	def password_reset(self, *, username: str, email: str = '', send_reset_email: bool = True, display_company_name: str = ''):
 		try:
 			response = requests.post(
 				f'{self.base_url}/api/v1/users/password-reset/',
@@ -306,9 +320,31 @@ class BizPortalClient:
 					'username': username,
 					'email': email,
 					'send_reset_email': send_reset_email,
+					'display_company_name': display_company_name,
 				},
 				headers={
-					**self._build_headers(),
+					**self._build_application_headers(),
+					'Content-Type': 'application/json',
+				},
+				timeout=get_setting('OIDC_TIMEOUT_SECONDS'),
+			)
+		except requests.Timeout as exc:
+			raise BizPortalApiError('BizPortal APIへの接続がタイムアウトしました。', status_code=504) from exc
+		except requests.RequestException as exc:
+			raise BizPortalApiError('BizPortal APIへの接続に失敗しました。', status_code=502) from exc
+		return self._handle_response(response)
+
+	def send_email(self, *, username: str, subject: str, body: str):
+		try:
+			response = requests.post(
+				f'{self.base_url}/api/v1/users/send-email/',
+				json={
+					'username': username,
+					'subject': subject,
+					'body': body,
+				},
+				headers={
+					**self._build_application_headers(),
 					'Content-Type': 'application/json',
 				},
 				timeout=get_setting('OIDC_TIMEOUT_SECONDS'),
@@ -329,7 +365,7 @@ class BizPortalClient:
 					'password': password,
 				},
 				headers={
-					**self._build_headers(),
+					**self._build_user_headers(),
 					'Content-Type': 'application/json',
 				},
 				timeout=get_setting('OIDC_TIMEOUT_SECONDS'),
