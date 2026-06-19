@@ -1,19 +1,21 @@
 import json
 import logging
-import secrets
 import requests
+import secrets
 
-from urllib.parse import urlencode
 from authlib.integrations.base_client.errors import OAuthError
+from urllib.parse import urlencode
+
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.hashers import check_password
 from django.contrib.sessions.models import Session
-from django.http import HttpResponseBadRequest, JsonResponse
+from django.core.exceptions import BadRequest, PermissionDenied
+from django.core.signing import BadSignature, SignatureExpired
+from django.http import JsonResponse
 from django.shortcuts import redirect
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
-from django.core.signing import BadSignature, SignatureExpired
 
 from .client import oidc_config, build_authorize_redirect, validate_id_token, build_oauth_session
 from .events import UserEvent
@@ -33,6 +35,11 @@ def safe_next_path(raw_next):
     if raw_next.startswith('//'):
         return '/'
     return raw_next
+
+
+def _user_login_requirements_unmet(user):
+    required = get_setting('OIDC_LOGIN_REQUIRED_USER_ATTRS')
+    return [attr for attr, expected in required.items() if getattr(user, attr, None) != expected]
 
 
 def build_signed_state(*, nonce, next_path='/'):
@@ -85,24 +92,27 @@ def oidc_callback(request):
     error = request.GET.get('error')
     if error:
         description = request.GET.get('error_description', '')
-        return HttpResponseBadRequest(f'authorization error: {error} {description}')
+        raise BadRequest(f'authorization error: {error} {description}')
 
     code = request.GET.get('code')
     if not code:
-        return HttpResponseBadRequest('missing authorization code')
+        raise BadRequest('missing authorization code')
 
     raw_state = request.GET.get('state')
     if not raw_state:
-        return HttpResponseBadRequest('missing state')
+        raise BadRequest('missing state')
 
     try:
         parsed_state = parse_signed_state(raw_state)
     except (SignatureExpired, BadSignature):
-        return HttpResponseBadRequest('invalid or expired state')
+        # 期限切れ/無効な state でも、既にログイン済みなら戻る操作とみなしホームへ遷移する
+        if request.user.is_authenticated:
+            return redirect('/')
+        raise BadRequest('invalid or expired state')
 
     expected_nonce = parsed_state.get('nonce')
     if not expected_nonce:
-        return HttpResponseBadRequest('state nonce is required')
+        raise BadRequest('state nonce is required')
 
     client = build_oauth_session()
     try:
@@ -115,17 +125,17 @@ def oidc_callback(request):
         )
         id_token = token.get('id_token')
         if not id_token:
-            return HttpResponseBadRequest('id_token is required')
+            raise BadRequest('id_token is required')
 
         claims = validate_id_token(id_token, config, expected_nonce)
         sub = claims.get('sub')
         if not sub:
-            return HttpResponseBadRequest('sub claim is required')
+            raise BadRequest('sub claim is required')
 
         issuer = claims.get('iss') or config['issuer']
         access_token = token.get('access_token')
         if not access_token:
-            return HttpResponseBadRequest('access_token is required')
+            raise BadRequest('access_token is required')
 
         expires_at = timezone.now().timestamp() + int(token.get('expires_in') or 0)
         request.session['oidc_access_token'] = access_token
@@ -135,7 +145,11 @@ def oidc_callback(request):
 
     except (OAuthError, requests.RequestException, ValueError, KeyError, TypeError) as exc:
         logger.warning('OIDC token exchange failed: %s', exc)
-        return HttpResponseBadRequest('oidc token exchange failed')
+        # 既にログイン済みでのコールバック再到達（戻る操作等による使い捨てコードの再交換失敗）は
+        # 無害なため、エラーを表示せず元の遷移先へリダイレクトする
+        if request.user.is_authenticated:
+            return redirect(safe_next_path(parsed_state.get('next') or '/'))
+        raise BadRequest('oidc token exchange failed')
 
     userinfo = {}
     try:
@@ -147,9 +161,9 @@ def oidc_callback(request):
         logger.warning('Failed to fetch optional userinfo: %s', exc)
         userinfo = {}
 
-    userinfo_sub = userinfo.get("sub")
+    userinfo_sub = userinfo.get('sub')
     if userinfo_sub and userinfo_sub != sub:
-        return HttpResponseBadRequest("userinfo sub mismatch")
+        raise BadRequest('userinfo sub mismatch')
 
     user = authenticate(
         request,
@@ -158,13 +172,21 @@ def oidc_callback(request):
         oidc_issuer=issuer,
     )
     if not user:
-        return HttpResponseBadRequest('no matching user account found')
+        raise BadRequest('no matching user account found')
+
+    unmet = _user_login_requirements_unmet(user)
+    if unmet:
+        # 必須属性を満たさないユーザーはログインさせない（無限リダイレクトループ防止）
+        logger.warning('OIDC login blocked for user %s; unmet attrs: %s', getattr(user, 'pk', None), unmet)
+        for key in ('oidc_access_token', 'oidc_refresh_token', 'oidc_access_token_expires_at', 'oidc_sid'):
+            request.session.pop(key, None)
+        raise PermissionDenied('このアカウントではログインできません。')
 
     request.session['oidc_company_slug'] = userinfo.get('company_slug') or ''
     request.session['oidc_company_name'] = _cleanup_company_name(userinfo.get('company_name') or '')
     request.session['oidc_installation_name'] = userinfo.get('installation_name') or ''
 
-    backend_path = get_setting('OIDC_AUTH_BACKEND', 'django.contrib.auth.backends.ModelBackend')
+    backend_path = get_setting('OIDC_AUTH_BACKEND')
     login(request, user, backend=backend_path)
     return redirect(safe_next_path(parsed_state.get('next') or '/'))
 

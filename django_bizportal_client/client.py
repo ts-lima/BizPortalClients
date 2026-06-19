@@ -264,7 +264,7 @@ class BizPortalClient:
 			company_slug=company_slug,
 		)
 
-	def update_user(self, *, username: str, email: str = None, name: str = None, surname: str = None, role: CompanyUserRole = None):
+	def update_user(self, *, username: str, email: str = None, name: str = None, surname: str = None, role: CompanyUserRole = None, is_active: bool = None):
 		data = {
 			'username': username,
 		}
@@ -276,6 +276,8 @@ class BizPortalClient:
 			data['surname'] = surname
 		if role is not None:
 			data['role'] = role
+		if is_active is not None:
+			data['is_active'] = is_active
 		try:
 			response = requests.post(
 				f'{self.base_url}/api/v1/users/update/',
@@ -355,14 +357,14 @@ class BizPortalClient:
 			raise BizPortalApiError('BizPortal APIへの接続に失敗しました。', status_code=502) from exc
 		return self._handle_response(response)
 
-	def password_update(self, *, username: str, subject: str, password: str):
+	def password_update(self, *, username: str, subject: str, password_hash: str):
 		try:
 			response = requests.post(
 				f'{self.base_url}/api/v1/users/password-update/',
 				json={
 					'username': username,
 					'sub': subject,
-					'password': password,
+					'password_hash': password_hash,
 				},
 				headers={
 					**self._build_user_headers(),

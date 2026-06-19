@@ -5,7 +5,7 @@ BizPortal を OIDC IdP として使う Django 5+ 向け最小クライアント�
 ## インストール
 
 ```bash
-pip install git+https://github.com/ts-taisei/BizPortalClients.git@dja-1.2.0#subdirectory=django_bizportal_client
+pip install git+https://github.com/ts-taisei/BizPortalClients.git@dja-1.3.0#subdirectory=django_bizportal_client
 ```
 
 ## 基準設定
@@ -59,7 +59,10 @@ OIDC_TIMEOUT_SECONDS = 10
 OIDC_AUTO_LINK_BY_EMAIL = False
 OIDC_AUTO_CREATE_USER = False
 OIDC_IDENTITY_MODEL = 'django_bizportal_client.OIDCIdentity'
+OIDC_LOGIN_REQUIRED_USER_ATTRS = {'is_active': True}
 ```
+**追加情報**：`OIDC_LOGIN_REQUIRED_USER_ATTRS`について、特定の条件でログインを制限したい場合は、`OIDC_LOGIN_REQUIRED_USER_ATTRS` を設定します。これは、ログインに必要なユーザー属性とその理想値を辞書形式で指定するもので、未充足の場合はログインが拒否されます（HTTP 403）。アプリ側で条件を追加することも可能です。
+- 例: OIDC_LOGIN_REQUIRED_USER_ATTRS = {'is_active': True, 'is_permitted': True, 'email_verified': True}
 
 ---
 
@@ -111,11 +114,11 @@ python manage.py migrate django_bizportal_client
 - `get_username_availability`: BizPortal 上でのユーザー名の利用可能性を確認
 - `provision_user`: BizPortal 上でユーザーを作成。`password` 省略時はパスワード再設定フローが起動し、`send_reset_email=False` でメール送信を抑制して `password_reset_url` のみ受け取れる。`display_company_name` を指定するとパスワード再設定ページに表示される会社名を上書きできる
 - `create_oidc_identity`: クライアント側で OIDCIdentity レコードを作成
-- `update_user`: BizPortal 上のユーザー情報を更新 (メールアドレス、名前、苗字、役割)
+- `update_user`: BizPortal 上のユーザー情報を更新 (メールアドレス、名前、苗字、役割、有効状態)。`is_active=False` で当該アプリのアクセスを無効化（InstallationAccess があればそれを、なければ CompanyUser を更新）、`True` で再有効化
 - `delete_user`: BizPortal 上のユーザーを削除 (ユーザー名と OIDC subject を指定)
 - `password_reset`: BizPortal 上のユーザーのパスワード再設定 URL を生成し、レスポンスの `password_reset_url` で受け取る。`send_reset_email=False` でメール送信を抑制し、クライアント側で URL を管理できる。`display_company_name` を指定するとパスワード再設定ページに表示される会社名を上書きできる。
 - `send_email`: BizPortal 上のユーザーの登録メールアドレス宛に任意のメール（件名・本文）を送信する。
-- `password_update`: BizPortal 上のユーザーパスワードを更新 (ユーザー名、OIDC subject、新しいパスワードを指定)
+- `password_update`: BizPortal 上のユーザーパスワードを Django エンコード済みハッシュで直接更新 (ユーザー名、OIDC subject、password_hash を指定。pbkdf2_sha256 のみ対応)
 
 ### クライアントコードの例
 
@@ -236,11 +239,12 @@ def password_reset_view(request):
 def password_update_view(request):
     username = request.POST.get('username')
     subject = request.POST.get('subject')
-    new_password = request.POST.get('password')
+    # password_hash は Django のエンコード済みハッシュ（例: user.password の値、pbkdf2_sha256）
+    new_password_hash = request.POST.get('password_hash')
 
     try:
         client = BizPortalClient(request)
-        client.password_update(username=username, subject=subject, password=new_password)
+        client.password_update(username=username, subject=subject, password_hash=new_password_hash)
     except BizPortalApiError as e:
         raise Exception(f"ユーザーパスワードの更新に失敗: {str(e)}")
     except Exception as e:

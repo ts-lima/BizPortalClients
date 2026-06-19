@@ -35,7 +35,7 @@ class BizPortalOIDCBackend(BaseBackend):
             return identity.user
 
         email = (oidc_userinfo.get('email') or oidc_claims.get('email') or '').strip()
-        if get_setting('OIDC_AUTO_LINK_BY_EMAIL', False) and email:
+        if get_setting('OIDC_AUTO_LINK_BY_EMAIL') and email:
             user_model = get_user_model()
             linked_user = user_model._default_manager.filter(email__iexact=email).first()
             if linked_user:
@@ -44,7 +44,7 @@ class BizPortalOIDCBackend(BaseBackend):
                 self._update_user_profile(linked_user, oidc_claims, oidc_userinfo)
                 return linked_user
 
-        if not get_setting('OIDC_AUTO_CREATE_USER', False):
+        if not get_setting('OIDC_AUTO_CREATE_USER'):
             return None
 
         with transaction.atomic():
