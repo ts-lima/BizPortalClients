@@ -119,6 +119,7 @@ python manage.py migrate django_bizportal_client
 - `password_reset`: BizPortal 上のユーザーのパスワード再設定 URL を生成し、レスポンスの `password_reset_url` で受け取る。`send_reset_email=False` でメール送信を抑制し、クライアント側で URL を管理できる。`display_company_name` を指定するとパスワード再設定ページに表示される会社名を上書きできる。
 - `send_email`: BizPortal 上のユーザーの登録メールアドレス宛に任意のメール（件名・本文）を送信する。
 - `password_update`: BizPortal 上のユーザーパスワードを Django エンコード済みハッシュで直接更新 (ユーザー名、OIDC subject、password_hash を指定。pbkdf2_sha256 のみ対応)
+- `username_update`: BizPortal 上のユーザーIDを変更 (現在のユーザー名、OIDC subject、new_username を指定。`InstallationAccess` による制限モードが有効な導入でのみ利用可能)
 
 ### クライアントコードの例
 
@@ -251,6 +252,21 @@ def password_update_view(request):
         raise Exception(f"ユーザーパスワードの更新中に予期しないエラー: {str(e)}")
 
     return HttpResponse("ユーザーパスワードが正常に更新されました")
+
+def username_update_view(request):
+    username = request.POST.get('username')
+    subject = request.POST.get('subject')
+    new_username = request.POST.get('new_username')
+
+    try:
+        client = BizPortalClient(request)
+        client.username_update(username=username, subject=subject, new_username=new_username)
+    except BizPortalApiError as e:
+        raise Exception(f"ユーザーIDの更新に失敗: {str(e)}")
+    except Exception as e:
+        raise Exception(f"ユーザーIDの更新中に予期しないエラー: {str(e)}")
+
+    return HttpResponse("ユーザーIDが正常に更新されました")
 ```
 
 ### 匿名コンテキストでの呼び出し（アプリケーション資格情報）
